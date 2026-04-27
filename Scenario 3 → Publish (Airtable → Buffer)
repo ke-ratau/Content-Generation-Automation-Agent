@@ -1,0 +1,48 @@
+name: myvento-publisher
+trigger:
+  type: scheduler
+  interval: 15m
+
+modules:
+
+  - id: airtable_search
+    type: airtable.searchRecords
+    config:
+      table: Content Library
+      formula: 'AND({Status}="Ready",{Media Status}="Ready")'
+
+  - id: iterator
+    type: tools.iterator
+    input: airtable_search.records
+
+  - id: set_time_slot
+    type: tools.setVariable
+    config:
+      selectedTime: |
+        if(
+          mod(iterator.position;3)=1; "09:00";
+          if(mod(iterator.position;3)=2; "14:00"; "19:00")
+        )
+
+  - id: buffer_post
+    type: buffer.createUpdate
+    config:
+      profiles:
+        - FACEBOOK_ID
+        - INSTAGRAM_ID
+        - TIKTOK_ID
+      text: "{{iterator.Caption}}"
+      media:
+        link: "{{iterator['Media URL']}}"
+      publication: scheduled
+      scheduled_at: |
+        {{parseDate(formatDate(now; "YYYY-MM-DD") & " " & selectedTime; "YYYY-MM-DD HH:mm")}}
+
+  - id: airtable_update
+    type: airtable.updateRecord
+    config:
+      table: Content Library
+      recordId: "{{iterator.id}}"
+      fields:
+        Status: "Posted"
+        Last Published: "{{now}}"
