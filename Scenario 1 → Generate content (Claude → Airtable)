@@ -1,0 +1,72 @@
+name: myvento-content-generation
+trigger:
+  type: scheduler
+  interval: 15m
+
+modules:
+
+  - id: airtable_search
+    type: airtable.searchRecords
+    config:
+      base: Content Base
+      table: Content Plan
+      formula: 'AND({Status}="Pending")'
+
+  - id: iterator
+    type: tools.iterator
+    input: airtable_search.records
+
+  - id: claude_http
+    type: http.request
+    config:
+      method: POST
+      url: https://api.anthropic.com/v1/messages
+      headers:
+        Authorization: Bearer {{CLAUDE_API_KEY}}
+        Content-Type: application/json
+      body: |
+        {
+          "model": "claude-sonnet-4-6",
+          "max_tokens": 1024,
+          "messages": [
+            {
+              "role": "user",
+              "content": "Business: MyVento — AI-powered tender assistance platform in South Africa...\nFunnel Stage: {{iterator.Stage}}\nPillar: {{iterator.Pillar}}\nAudience: {{iterator.Audience}}\n\nReturn ONLY JSON with hook, script, caption, cta, image_prompt, video_prompt."
+            }
+          ]
+        }
+
+  - id: parse_json
+    type: json.parse
+    config:
+      schema:
+        type: object
+        properties:
+          hook: { type: string }
+          script: { type: string }
+          caption: { type: string }
+          cta: { type: string }
+          image_prompt: { type: string }
+          video_prompt: { type: string }
+
+  - id: airtable_create
+    type: airtable.createRecord
+    config:
+      table: Content Library
+      fields:
+        Hook: "{{parse_json.hook}}"
+        Script: "{{parse_json.script}}"
+        Caption: "{{parse_json.caption}}"
+        CTA: "{{parse_json.cta}}"
+        Image Prompt: "{{parse_json.image_prompt}}"
+        Video Prompt: "{{parse_json.video_prompt}}"
+        Status: "Ready"
+        Media Status: "Pending"
+
+  - id: airtable_update_plan
+    type: airtable.updateRecord
+    config:
+      table: Content Plan
+      recordId: "{{iterator.id}}"
+      fields:
+        Status: "Processed"
